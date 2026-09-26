@@ -50,6 +50,8 @@ void main() {
 };
 
 const STORAGE_KEY = 'kaiju-dokan-v1';
+/** How long the "click to use the mouse" hint stays on screen. */
+const LOCK_HINT_SECONDS = 5;
 
 interface Settings {
   sens: number;
@@ -97,6 +99,7 @@ export class Game {
   private lastW = 0;
   private lastH = 0;
   private lockHintShown = false;
+  private lockHintT = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const params = new URLSearchParams(location.search);
@@ -536,12 +539,22 @@ export class Game {
     this.composer.render(dtReal);
 
     this.sfx.update(dtReal, cam, window.innerWidth, window.innerHeight);
-    const wantLockHint = this.state === 'playing' && !this.input.locked;
-    if (wantLockHint !== this.lockHintShown) {
-      this.lockHintShown = wantLockHint;
-      show('lock-hint', wantLockHint);
-    }
+    this.updateLockHint(dtReal);
     if (this.debug) this.updateDebug();
+  }
+
+  /**
+   * "Click to control the camera with the mouse" hint: shown when play starts (or resumes)
+   * without pointer lock, then fades out after LOCK_HINT_SECONDS.
+   */
+  private updateLockHint(dt: number): void {
+    const unlocked = this.state === 'playing' && !this.input.locked;
+    this.lockHintT = unlocked ? this.lockHintT + dt : 0;
+    const want = unlocked && this.lockHintT < LOCK_HINT_SECONDS;
+    if (want !== this.lockHintShown) {
+      this.lockHintShown = want;
+      document.getElementById('lock-hint')?.classList.toggle('visible', want);
+    }
   }
 
   /** Camera orbit centre: a little ahead of the kaiju and over its right shoulder so attacks stay visible. */

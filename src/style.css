@@ -722,6 +722,18 @@ body {
   font-size: 14px;
   font-weight: 700;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#lock-hint.visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #lock-hint {
+    transition: none;
+  }
 }
 
 #error-box {
