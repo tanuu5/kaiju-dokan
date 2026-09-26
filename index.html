@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>怪獣ドカン！ KAIJU DOKAN!</title>
     <meta name="description" content="巨大怪獣を操作して街をドカンドカン破壊するブラウザゲーム（Three.js）" />
     <meta name="theme-color" content="#1a1420" />
@@ -69,6 +69,20 @@
         <div id="debug-overlay" class="hidden"></div>
       </div>
 
+      <!-- ===== TOUCH CONTROLS (phones / tablets) ===== -->
+      <div id="touch-ui" class="hidden">
+        <div id="touch-layer"></div>
+        <div id="touch-stick"><div class="knob"></div></div>
+        <button id="touch-pause" type="button" aria-label="ポーズ"><span></span><span></span></button>
+        <div id="touch-buttons">
+          <button type="button" class="tbtn tbtn-punch" data-act="punch">パンチ</button>
+          <button type="button" class="tbtn tbtn-jump" data-act="jump">ジャンプ</button>
+          <button type="button" class="tbtn tbtn-tail" data-act="tail">しっぽ</button>
+          <button type="button" class="tbtn tbtn-breath" data-act="breath">ブレス</button>
+          <button type="button" class="tbtn tbtn-roar" data-act="roar">咆哮</button>
+        </div>
+      </div>
+
       <!-- ===== TITLE ===== -->
       <div id="title-screen" class="screen">
         <div class="title-wrap">
@@ -82,11 +96,19 @@
             防衛軍の戦車や攻撃ヘリにも注意。
           </div>
           <div class="title-controls">
-            <div><b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>マウス</b> カメラ</div>
-            <div><b>左クリック</b> パンチ　<b>E</b> しっぽ　<b>Space</b> 踏みつけ</div>
-            <div><b>右クリック長押し</b> マグマブレス　<b>Q</b> 咆哮</div>
-            <div class="dim">キーボードだけでも遊べます：J パンチ / K しっぽ / L ブレス / I 咆哮 / 矢印キー カメラ</div>
-            <div class="dim">ゲームパッドにも対応：左スティック 移動 / X（□）パンチ / B（○）しっぽ / A（×）ジャンプ / RT（R2）ブレス / Y（△）咆哮</div>
+            <div class="kb-only">
+              <div><b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>マウス</b> カメラ</div>
+              <div><b>左クリック</b> パンチ　<b>E</b> しっぽ　<b>Space</b> 踏みつけ</div>
+              <div><b>右クリック長押し</b> マグマブレス　<b>Q</b> 咆哮</div>
+              <div class="dim">キーボードだけでも遊べます：J パンチ / K しっぽ / L ブレス / I 咆哮 / 矢印キー カメラ</div>
+              <div class="dim">ゲームパッドにも対応：左スティック 移動 / X（□）パンチ / B（○）しっぽ / A（×）ジャンプ / RT（R2）ブレス / Y（△）咆哮</div>
+            </div>
+            <div class="touch-only">
+              <div><b>画面の左側</b>をドラッグで移動（端まで倒すとダッシュ）</div>
+              <div><b>画面の右側</b>をドラッグでカメラ</div>
+              <div><b>右下のボタン</b>で攻撃（ブレスは長押し）</div>
+              <div class="dim portrait-only">横向きにすると広い画面で遊べます</div>
+            </div>
           </div>
           <div id="title-best" class="title-best"></div>
         </div>
@@ -97,6 +119,7 @@
         <div class="menu-box">
           <h2>PAUSE</h2>
           <button id="btn-resume" class="btn btn-primary">再開する</button>
+          <button id="btn-finish-pause" class="btn hidden">ここで終了して結果を見る</button>
           <button id="btn-settings-pause" class="btn">設定</button>
           <button id="btn-retry-pause" class="btn">最初からやり直す</button>
           <button id="btn-title-pause" class="btn">タイトルへ戻る</button>

@@ -27,6 +27,12 @@ const MAX_SCORE = 6;
 /** Manga-style onomatopoeia ("ドカン！") and score pop-ups projected from world space. */
 export class SfxText {
   private readonly items: Item[] = [];
+  /** Font-size multiplier (smaller on phones). */
+  private scale = 1;
+
+  setScale(s: number): void {
+    this.scale = s;
+  }
 
   constructor(layer: HTMLElement, pool = 24) {
     for (let i = 0; i < pool; i++) {
@@ -56,7 +62,7 @@ export class SfxText {
     it.z = z + (Math.random() * 2 - 1) * j;
     it.t = 0;
     it.life = o.life ?? 0.9;
-    it.size = o.size ?? 44;
+    it.size = (o.size ?? 44) * this.scale;
     it.rot = o.rot ?? (Math.random() * 2 - 1) * 12;
     it.rise = o.cls === 'score' ? 60 : 26;
     it.el.textContent = text;

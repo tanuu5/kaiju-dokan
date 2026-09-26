@@ -29,6 +29,7 @@ export const KAIJU = {
   turnSpeed: 3.4,
   strideLength: 16,
   breathCost: 26, // energy / second
+  breathMinEnergy: 8, // needed to start a breath
   breathChargeTime: 0.45,
   breathRange: 260,
   tailCooldown: 1.6,

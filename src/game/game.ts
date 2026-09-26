@@ -19,6 +19,7 @@ import { STAGE1, type StageDef } from '../stages/stages';
 import { Hud } from '../ui/hud';
 import { MenuNav } from '../ui/menuNav';
 import { Minimap } from '../ui/minimap';
+import { TouchControls, type TouchAction, type TouchFrame } from '../ui/touchControls';
 import type { RayHit } from '../world/buildings';
 import { createSkyMaterial, PALETTE, SUN_DIR } from '../world/environment';
 import { CameraRig, DEFAULT_PITCH } from './cameraRig';
@@ -57,6 +58,8 @@ const STORAGE_KEY = 'kaiju-dokan-v1';
 const LOCK_HINT_SECONDS = 5;
 /** Suggest a lower quality preset if play runs below this frame rate. */
 const SLOW_FPS = 40;
+/** Camera turn per CSS pixel of touch drag (radians, before the sensitivity setting). */
+const TOUCH_LOOK = 0.0065;
 
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
@@ -98,6 +101,11 @@ export class Game {
   private toastTimer: number | null = null;
   private readonly fpsEl: HTMLElement;
   private readonly menuNav = new MenuNav();
+  private readonly touch: TouchControls;
+  /** Phones / tablets: on-screen controls, no pointer lock. */
+  private touchMode = false;
+  private touchUiShown = false;
+  private tf: TouchFrame | null = null;
   private best = { score: 0, rank: '' };
   private debug = false;
   private debugEl: HTMLElement;
@@ -115,7 +123,8 @@ export class Game {
     this.debugEl = document.getElementById('debug-overlay')!;
     this.debugEl.classList.toggle('hidden', !this.debug);
     this.fpsEl = document.getElementById('fps-counter')!;
-    this.loadSettings();
+    // phones / tablets start on the light preset until the player picks one
+    if (!this.loadSettings() && window.matchMedia?.('(pointer: coarse)').matches) this.settings.quality = 'low';
     // ?quality=low|medium|high overrides the saved preset for this visit
     const urlQuality = params.get('quality');
     if (isQualityLevel(urlQuality)) this.settings.quality = urlQuality;
@@ -194,6 +203,17 @@ export class Game {
     };
     this.applySettings();
     this.bindUi();
+    this.touch = new TouchControls(document.getElementById('touch-ui')!);
+    if (window.matchMedia?.('(pointer: coarse)').matches) this.setTouchMode(true);
+    // hybrid devices: switch to whatever the player last used
+    window.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.pointerType === 'touch') this.setTouchMode(true);
+        else if (e.pointerType === 'mouse') this.setTouchMode(false);
+      },
+      { capture: true },
+    );
     this.pad.onConnect = () => {
       this.showToast('ゲームパッドを接続しました', 2.5);
       document.getElementById('controls-hint')?.classList.add('mode-pad');
@@ -247,6 +267,7 @@ export class Game {
   private setState(s: GameState): void {
     this.state = s;
     this.stateT = 0;
+    this.updateTouchUi();
   }
 
   private toTitle(): void {
@@ -273,7 +294,7 @@ export class Game {
     this.audio.ui();
     this.perfTime = 0;
     this.perfFrames = 0;
-    this.input.requestLock();
+    this.lockPointer();
     this.settingsOpen = false;
     show('settings-screen', false);
     show('title-screen', false);
@@ -307,7 +328,7 @@ export class Game {
     this.hud.clearBanners();
     this.hud.showBanner('START!', 'gold', 1.2);
     this.audio.startMusic();
-    this.input.requestLock();
+    this.lockPointer();
   }
 
   private pause(): void {
@@ -315,6 +336,8 @@ export class Game {
     this.setState('paused');
     this.audio.stopLoops();
     this.audio.breathStop();
+    // after clearing the goal the run can be ended early (touch / pad have no Enter key)
+    show('btn-finish-pause', this.session.cleared);
     show('pause-screen', true);
   }
 
@@ -322,7 +345,7 @@ export class Game {
     if (this.state !== 'paused') return;
     show('pause-screen', false);
     this.setState('playing');
-    this.input.requestLock();
+    this.lockPointer();
     this.lastTime = performance.now();
   }
 
@@ -393,6 +416,11 @@ export class Game {
       this.beginRun();
     });
     on('btn-resume', () => this.resume());
+    on('btn-finish-pause', () => {
+      if (this.state !== 'paused' || !this.session.cleared) return;
+      show('pause-screen', false);
+      this.finish(true);
+    });
     on('btn-retry-pause', () => this.retry());
     on('btn-title-pause', () => {
       this.newSession();
@@ -406,7 +434,7 @@ export class Game {
     this.bindSettingsUi(on);
     // re-acquire pointer lock when clicking the canvas during play
     this.canvas.addEventListener('click', () => {
-      if (this.state === 'playing' || this.state === 'intro') this.input.requestLock();
+      if (this.state === 'playing' || this.state === 'intro') this.lockPointer();
     });
   }
 
@@ -451,6 +479,31 @@ export class Game {
     range('opt-sfx', (v) => (this.settings.sfxVolume = v));
     check('opt-invert', (v) => (this.settings.invert = v));
     check('opt-fps', (v) => (this.settings.showFps = v));
+  }
+
+  private setTouchMode(on: boolean): void {
+    if (this.touchMode === on) return;
+    this.touchMode = on;
+    this.touch.enabled = on;
+    document.body.classList.toggle('touch', on);
+    if (on) this.input.exitLock();
+    // a mouse click during play (hybrid laptop) goes straight back to mouse look
+    else if (this.state === 'playing' || this.state === 'intro') this.input.requestLock();
+    this.updateTouchUi();
+  }
+
+  /** Pointer lock for mouse look (not used with touch controls). */
+  private lockPointer(): void {
+    if (!this.touchMode) this.input.requestLock();
+  }
+
+  /** On-screen controls are shown only while the kaiju can be controlled. */
+  private updateTouchUi(): void {
+    const want = this.touchMode && (this.state === 'intro' || this.state === 'playing');
+    if (want === this.touchUiShown) return;
+    this.touchUiShown = want;
+    show('touch-ui', want);
+    this.touch.reset();
   }
 
   /** The menu the gamepad should navigate right now (null during play). */
@@ -557,15 +610,18 @@ export class Game {
     this.toastTimer = window.setTimeout(() => el.classList.remove('show'), seconds * 1000);
   }
 
-  private loadSettings(): void {
+  /** @returns true when saved settings were found. */
+  private loadSettings(): boolean {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
+      if (!raw) return false;
       const d = JSON.parse(raw) as Partial<{ settings: unknown; best: { score: number; rank: string } }>;
       this.settings = normalizeSettings(d.settings);
       if (d.best && typeof d.best.score === 'number') this.best = d.best;
+      return typeof d.settings === 'object' && d.settings !== null;
     } catch {
       /* storage unavailable */
+      return false;
     }
   }
 
@@ -587,6 +643,8 @@ export class Game {
     this.composer.setSize(w, h);
     this.bloom.resolution.set(size.x / 2, size.y / 2);
     this.rig.resize(w / h);
+    // "ドカン！" pop-ups sized for the screen (phones get smaller text)
+    this.sfx.setScale(clamp(Math.min(w, h) / 760, 0.55, 1));
   }
 
   // ------------------------------------------------------------------
@@ -637,6 +695,11 @@ export class Game {
       else if (this.state === 'playing' && this.pad.pressed(PAD.START)) this.pause();
       else if (this.state === 'title' && this.pad.pressed(PAD.START)) (document.getElementById('btn-start') as HTMLButtonElement).click();
     }
+
+    // touch: read every frame so drags don't pile up while the controls are hidden
+    const tf = this.touch.consume();
+    this.tf = this.touchMode ? tf : null;
+    if (this.tf?.pause && this.state === 'playing') this.pause();
 
     // global keys
     if (this.input.wasPressed('KeyM')) {
@@ -727,7 +790,7 @@ export class Game {
    * without pointer lock, then fades out after LOCK_HINT_SECONDS.
    */
   private updateLockHint(dt: number): void {
-    const unlocked = this.state === 'playing' && !this.input.locked && !this.pad.connected;
+    const unlocked = this.state === 'playing' && !this.input.locked && !this.pad.connected && !this.touchMode;
     this.lockHintT = unlocked ? this.lockHintT + dt : 0;
     const want = unlocked && this.lockHintT < LOCK_HINT_SECONDS;
     if (want !== this.lockHintShown) {
@@ -742,7 +805,8 @@ export class Game {
     const S = KAIJU.scale;
     const aim = this.session.aimBlend;
     const ahead = 16 * S;
-    const side = (10 + 8 * aim) * S;
+    // narrower on portrait screens, where the view is only ~42° wide
+    const side = (10 + 8 * aim) * S * Math.min(1, this.rig.camera.aspect);
     out.copy(k.position);
     out.y = Math.max(out.y, 0) + (26 + aim * 12) * S;
     out.x += this.rig.forwardX * ahead + this.rig.rightX * side;
@@ -782,7 +846,8 @@ export class Game {
     const p1 = new THREE.Vector3(l1.x, l1.y + Math.sin(this.rig.pitch) * this.rig.distance, l1.z + cp * this.rig.distance);
     this.rig.cinematic = { pos: p0.lerp(p1, e), look: l0.lerp(l1, e) };
     if (t > 0.3 && t < 4.4 && Math.random() < 0.5) w.fx.splash(s.x + rand(-10, 10), -1, s.z + rand(-10, 10), rand(6, 12), 3);
-    if (((this.input.anyPressed || this.pad.anyPressed) && this.stateT > 0.6) || k.action !== 'intro') this.startPlaying();
+    const skip = this.input.anyPressed || this.pad.anyPressed || (this.tf ? this.tf.tap || this.tf.pause : false);
+    if ((skip && this.stateT > 0.6) || k.action !== 'intro') this.startPlaying();
   }
 
   // ------------------------------------------------------------------
@@ -811,20 +876,28 @@ export class Game {
       wx += px;
       wz += pz;
     }
+    // on-screen joystick (same axes as a gamepad stick)
+    const tf = this.tf;
+    if (tf) {
+      const [tx, tz] = stickToWorld(tf.moveX, tf.moveY, fx, fz, rx, rz);
+      wx += tx;
+      wz += tz;
+    }
     const l = Math.hypot(wx, wz);
     if (l > 1) {
       wx /= l;
       wz /= l;
     }
+    const touched = (a: TouchAction) => tf?.pressed.has(a) ?? false;
     return {
       moveX: wx,
       moveZ: wz,
-      run: inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') || pad.down(PAD.LB) || pad.down(PAD.L3),
-      punch: inp.mouseWasPressed(0) || inp.wasPressed('KeyJ') || pad.pressed(PAD.X),
-      tail: inp.wasPressed('KeyE') || inp.wasPressed('KeyK') || pad.pressed(PAD.B),
-      jump: inp.wasPressed('Space') || pad.pressed(PAD.A),
-      roar: inp.wasPressed('KeyQ') || inp.wasPressed('KeyI') || pad.pressed(PAD.Y),
-      breath: inp.mouse(2) || inp.isDown('KeyF') || inp.isDown('KeyL') || pad.down(PAD.RT),
+      run: inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') || pad.down(PAD.LB) || pad.down(PAD.L3) || (tf?.run ?? false),
+      punch: inp.mouseWasPressed(0) || inp.wasPressed('KeyJ') || pad.pressed(PAD.X) || touched('punch'),
+      tail: inp.wasPressed('KeyE') || inp.wasPressed('KeyK') || pad.pressed(PAD.B) || touched('tail'),
+      jump: inp.wasPressed('Space') || pad.pressed(PAD.A) || touched('jump'),
+      roar: inp.wasPressed('KeyQ') || inp.wasPressed('KeyI') || pad.pressed(PAD.Y) || touched('roar'),
+      breath: inp.mouse(2) || inp.isDown('KeyF') || inp.isDown('KeyL') || pad.down(PAD.RT) || (tf?.held.has('breath') ?? false),
       aimYaw: Math.atan2(fx, fz),
       aim: this.session.aim,
     };
@@ -850,6 +923,11 @@ export class Game {
       dyaw -= Math.sign(this.pad.rx) * this.pad.rx * this.pad.rx * ps;
       dpitch += Math.sign(this.pad.ry) * this.pad.ry * this.pad.ry * ps * 0.6 * inv;
     }
+    if (this.tf) {
+      // drag on the right half of the screen
+      dyaw -= this.tf.camDX * TOUCH_LOOK * this.settings.sens;
+      dpitch += this.tf.camDY * TOUCH_LOOK * 0.7 * this.settings.sens * inv;
+    }
     this.rig.rotate(dyaw, dpitch);
     if (inp.wheel !== 0) this.rig.zoom(inp.wheel);
 
@@ -860,7 +938,8 @@ export class Game {
     if (s.cleared && !this.announcedClear) {
       this.announcedClear = true;
       window.setTimeout(() => {
-        if (this.state === 'playing') this.hud.showBanner('時間いっぱい暴れてスコアを伸ばそう！（Enterで終了）', 'small', 3.5);
+        const how = this.touchMode || this.pad.connected ? 'ポーズメニューで終了' : 'Enterで終了';
+        if (this.state === 'playing') this.hud.showBanner(`時間いっぱい暴れてスコアを伸ばそう！（${how}）`, 'small', 3.5);
       }, 3000);
     }
     if (s.cleared && inp.wasPressed('Enter')) {
@@ -901,6 +980,15 @@ export class Game {
       dtReal,
     );
     this.minimap.draw(w.buildings.list, { x: k.position.x, z: k.position.z, yaw: k.yaw }, this.rig.yaw, (cb) => w.military.forEachUnit(cb));
+    if (this.touchUiShown) {
+      this.touch.setStates({
+        tail: k.cdTail <= 0,
+        jump: k.cdJump <= 0 && !k.airborne,
+        roar: k.cdRoar <= 0,
+        breath: k.energy > KAIJU.breathMinEnergy || k.breathing || k.charging,
+        breathFull: k.energy >= KAIJU.maxEnergy - 0.5,
+      });
+    }
 
     // once per visit: suggest the light preset if the first seconds of play run slowly
     this.perfTime += dtReal;

@@ -16,11 +16,13 @@ export class CameraRig {
   private fovKick = 0;
   private t = 0;
   private curDist = 105;
-  private readonly baseFov = 55;
+  /** Vertical FOV before kicks; widened on portrait screens (see resize). */
+  private baseFov = 55;
   /** Cinematic override (intro / result). */
   cinematic: { pos: THREE.Vector3; look: THREE.Vector3 } | null = null;
 
   constructor(aspect: number) {
+    this.baseFov = fovForAspect(aspect);
     this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 1, 5000);
   }
 
@@ -117,6 +119,18 @@ export class CameraRig {
 
   resize(aspect: number): void {
     this.camera.aspect = aspect;
+    this.baseFov = fovForAspect(aspect);
+    this.camera.fov = this.baseFov + this.fovKick;
     this.camera.updateProjectionMatrix();
   }
+}
+
+/**
+ * Vertical FOV that keeps at least ~42° of horizontal view on tall (portrait) screens,
+ * without going fisheye. Landscape screens keep the default 55°.
+ */
+export function fovForAspect(aspect: number): number {
+  const minHFov = (42 * Math.PI) / 180;
+  const needed = (2 * Math.atan(Math.tan(minHFov / 2) / Math.max(0.2, aspect)) * 180) / Math.PI;
+  return clamp(needed, 55, 78);
 }

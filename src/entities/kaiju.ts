@@ -702,7 +702,7 @@ export class Kaiju {
     const canStart = this.action === 'none' || this.action === 'punch';
     switch (this.breathState) {
       case 'off':
-        if (this.breathHeld && canStart && this.energy > 8 && !this.airborne) {
+        if (this.breathHeld && canStart && this.energy > KAIJU.breathMinEnergy && !this.airborne) {
           this.breathState = 'charge';
           this.breathT = 0;
           this.events.push({ type: 'chargeStart' });

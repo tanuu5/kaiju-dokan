@@ -455,7 +455,7 @@ body {
   font-style: italic;
   white-space: nowrap;
   will-change: transform, opacity;
-  -webkit-text-stroke: 5px #1a0800;
+  -webkit-text-stroke: 0.11em #1a0800;
   paint-order: stroke fill;
   letter-spacing: -0.02em;
   text-shadow: 0 5px 0 rgba(0, 0, 0, 0.45);
@@ -487,13 +487,24 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* short screens (phones in landscape): scroll instead of clipping the buttons */
+  overflow-y: auto;
   background: radial-gradient(ellipse at center, rgba(10, 6, 14, 0.25), rgba(10, 6, 14, 0.8));
+}
+
+/* auto margins centre the box but fall back to the top edge when it doesn't fit */
+.screen > .menu-box {
+  margin: auto;
 }
 
 #title-screen {
   background: linear-gradient(180deg, rgba(10, 6, 14, 0.1), rgba(10, 6, 14, 0.25) 40%, rgba(10, 6, 14, 0.85));
   align-items: flex-end;
   padding-bottom: 6vh;
+}
+
+#title-screen > .title-wrap {
+  margin: auto auto 0;
 }
 
 .title-wrap {
@@ -518,7 +529,7 @@ body {
   line-height: 1.05;
   letter-spacing: 0.02em;
   color: #fff;
-  -webkit-text-stroke: 8px #1a0800;
+  -webkit-text-stroke: 0.07em #1a0800; /* scales with the font so small screens keep the gradient visible */
   paint-order: stroke fill;
   text-shadow: 0 10px 0 rgba(0, 0, 0, 0.5);
   font-style: italic;
@@ -590,11 +601,6 @@ body {
     background 0.15s;
 }
 
-.btn:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.03);
-  background: rgba(40, 28, 44, 0.9);
-}
-
 .btn-primary {
   background: linear-gradient(180deg, #ff8a2a, #e8450f);
   border-color: #ffc27a;
@@ -604,8 +610,16 @@ body {
   box-shadow: 0 6px 24px rgba(255, 90, 20, 0.45);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffa04a, #ff5a1f);
+/* hover only with a real pointer (on phones :hover sticks after a tap) */
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.03);
+    background: rgba(40, 28, 44, 0.9);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ffa04a, #ff5a1f);
+  }
 }
 
 .btn:disabled {
@@ -894,5 +908,416 @@ body {
   #minimap {
     width: 130px;
     height: 130px;
+  }
+}
+
+/* ================= touch devices ================= */
+.touch-only {
+  display: none;
+}
+
+body.touch .touch-only {
+  display: block;
+}
+
+@media (orientation: landscape) {
+  .portrait-only {
+    display: none;
+  }
+}
+
+body.touch .kb-only,
+body.touch #controls-hint,
+body.touch #lock-hint,
+body.touch .cooldowns,
+body.touch .kaiju-name,
+body.touch .buildings-row {
+  display: none !important;
+}
+
+#touch-ui {
+  position: absolute;
+  inset: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#touch-layer {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+#touch-stick {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 92px);
+  top: calc(100% - env(safe-area-inset-bottom, 0px) - 120px);
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(10, 8, 14, 0.25);
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+#touch-stick.active {
+  opacity: 1;
+}
+
+#touch-stick .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.38);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+#touch-stick .knob.run {
+  background: rgba(255, 150, 60, 0.7);
+  border-color: #ffd08a;
+}
+
+#touch-pause {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 10px);
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 8, 14, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  touch-action: none;
+}
+
+#touch-pause span {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--text);
+}
+
+#touch-buttons {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 8px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  width: 210px;
+  height: 236px;
+}
+
+.tbtn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(20, 14, 24, 0.55);
+  padding: 0;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition:
+    transform 0.08s,
+    background 0.1s,
+    opacity 0.2s;
+}
+
+.tbtn.active {
+  transform: scale(0.92);
+  background: rgba(255, 106, 31, 0.75);
+}
+
+.tbtn.cooling {
+  opacity: 0.4;
+}
+
+.tbtn-punch {
+  right: 12px;
+  bottom: 40px;
+  width: 84px;
+  height: 84px;
+  font-size: 15px;
+  border-color: rgba(255, 190, 120, 0.6);
+  background: rgba(255, 106, 31, 0.35);
+}
+
+.tbtn-jump {
+  right: 104px;
+  bottom: 4px;
+  width: 62px;
+  height: 62px;
+}
+
+.tbtn-tail {
+  right: 124px;
+  bottom: 78px;
+  width: 62px;
+  height: 62px;
+}
+
+.tbtn-breath {
+  right: 64px;
+  bottom: 136px;
+  width: 66px;
+  height: 66px;
+  border-color: rgba(255, 170, 80, 0.55);
+}
+
+.tbtn-breath.ready {
+  box-shadow: 0 0 18px rgba(255, 140, 40, 0.8);
+  border-color: #ffd08a;
+}
+
+.tbtn-roar {
+  right: 2px;
+  bottom: 140px;
+  width: 54px;
+  height: 54px;
+}
+
+/* compact HUD on phones */
+body.touch .hud-top-left,
+body.touch .hud-top-right {
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  padding: 7px 9px;
+}
+
+body.touch .hud-top-left {
+  left: calc(env(safe-area-inset-left, 0px) + 58px);
+  width: 200px;
+}
+
+body.touch .hud-top-right {
+  right: calc(env(safe-area-inset-right, 0px) + 8px);
+  width: 200px;
+}
+
+body.touch .bar {
+  height: 11px;
+  margin-bottom: 5px;
+}
+
+body.touch .bar-label {
+  font-size: 8px;
+  line-height: 11px;
+}
+
+body.touch .destruction-label {
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+body.touch #destruction-pct {
+  font-size: 20px;
+}
+
+body.touch .score-label {
+  font-size: 9px;
+}
+
+body.touch #score {
+  font-size: 16px;
+}
+
+body.touch .hud-top-center {
+  top: calc(env(safe-area-inset-top, 0px) + 4px);
+}
+
+body.touch #timer {
+  font-size: 30px;
+}
+
+body.touch #minimap-wrap {
+  left: calc(env(safe-area-inset-left, 0px) + 8px);
+  top: calc(env(safe-area-inset-top, 0px) + 60px);
+  bottom: auto;
+  padding: 4px;
+}
+
+body.touch #minimap {
+  width: 96px;
+  height: 96px;
+}
+
+body.touch .combo {
+  top: calc(env(safe-area-inset-top, 0px) + 96px);
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+}
+
+body.touch .combo .combo-num {
+  font-size: 38px;
+}
+
+body.touch .combo .combo-word,
+body.touch .combo .combo-mult {
+  font-size: 13px;
+}
+
+body.touch .banner-item {
+  font-size: 22px;
+  padding: 6px 22px;
+}
+
+body.touch .banner-item.small {
+  font-size: 14px;
+}
+
+body.touch .banner-item.gold {
+  font-size: 30px;
+}
+
+body.touch #toast {
+  top: calc(env(safe-area-inset-top, 0px) + 150px);
+}
+
+/* portrait phones: timer on its own row, panels side by side below it */
+@media (orientation: portrait) {
+  body.touch .hud-top-center {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+  }
+
+  body.touch #timer {
+    font-size: 26px;
+  }
+
+  body.touch .hud-top-left,
+  body.touch .hud-top-right {
+    top: calc(env(safe-area-inset-top, 0px) + 58px);
+    width: calc(50% - 14px);
+  }
+
+  body.touch .hud-top-left {
+    left: 8px;
+  }
+
+  body.touch .hud-top-right {
+    right: 8px;
+  }
+
+  body.touch #minimap-wrap {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
+
+  body.touch #minimap {
+    width: 84px;
+    height: 84px;
+  }
+
+  body.touch .combo {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
+
+  body.touch #banner {
+    top: 30%;
+  }
+
+  body.touch #toast {
+    top: calc(env(safe-area-inset-top, 0px) + 250px);
+  }
+}
+
+/* short screens (phones in landscape): compact menus, result table beside the rank */
+@media (max-height: 520px) {
+  .menu-box {
+    padding: 14px 24px;
+  }
+
+  .menu-box h2 {
+    margin-bottom: 8px;
+    font-size: 26px;
+  }
+
+  .btn {
+    margin: 6px auto;
+    padding: 8px 24px;
+  }
+
+  .btn-primary {
+    font-size: 18px;
+  }
+
+  .btn-small {
+    padding: 6px 18px;
+  }
+
+  #title-screen {
+    padding-bottom: 10px;
+  }
+
+  .title-sub {
+    font-size: 14px;
+  }
+
+  .title-main {
+    font-size: clamp(36px, 7vw, 72px);
+  }
+
+  .title-stage {
+    margin: 2px 0 8px;
+    font-size: 14px;
+  }
+
+  .title-mission {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .title-controls {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .result-box {
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 28px;
+    align-items: center;
+  }
+
+  .result-box > * {
+    grid-column: 1;
+  }
+
+  .result-box .result-table {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+    margin: 0;
+  }
+
+  .rank {
+    margin: 0 0 4px;
+    font-size: 60px;
+  }
+
+  .result-table {
+    font-size: 13px;
+  }
+
+  .result-table td {
+    padding: 3px 6px;
+  }
+
+  .result-table tr.total td {
+    font-size: 17px;
   }
 }
