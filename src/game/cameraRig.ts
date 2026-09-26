@@ -41,12 +41,16 @@ export class CameraRig {
     return -Math.sin(this.yaw);
   }
 
+  /** Player comfort setting: 0 = no shake / FOV kick, 1 = full. */
+  shakeScale = 1;
+
   addTrauma(v: number): void {
-    this.trauma = Math.min(1, this.trauma + v);
+    // diminishing returns so rapid-fire attacks don't pin the shake at maximum
+    this.trauma = Math.min(1, this.trauma + v * (1 - this.trauma * 0.6));
   }
 
   kickFov(v: number): void {
-    this.fovKick = Math.max(this.fovKick, v);
+    this.fovKick = Math.max(this.fovKick, v * this.shakeScale);
   }
 
   rotate(dYaw: number, dPitch: number): void {
@@ -95,7 +99,7 @@ export class CameraRig {
     }
     // shake
     this.trauma = Math.max(0, this.trauma - dt * 1.4);
-    const s = this.trauma * this.trauma;
+    const s = this.trauma * this.trauma * this.shakeScale;
     if (s > 0.0001) {
       const tt = this.t * 32;
       cam.rotateX(Math.sin(tt * 1.1) * Math.sin(tt * 0.37) * 0.03 * s);

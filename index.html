@@ -64,6 +64,7 @@
           <h1 class="title-main">怪獣<span>ドカン！</span></h1>
           <div class="title-stage">STAGE 1　湾岸シティ</div>
           <button id="btn-start" class="btn btn-primary" disabled>読み込み中…</button>
+          <button id="btn-settings-title" class="btn btn-small">設定</button>
           <div class="title-mission">
             制限時間内に街の<b>破壊率 <span class="goal-inline">50</span>%</b>を目指せ！<br />
             防衛軍の戦車や攻撃ヘリにも注意。
@@ -83,15 +84,61 @@
         <div class="menu-box">
           <h2>PAUSE</h2>
           <button id="btn-resume" class="btn btn-primary">再開する</button>
+          <button id="btn-settings-pause" class="btn">設定</button>
           <button id="btn-retry-pause" class="btn">最初からやり直す</button>
           <button id="btn-title-pause" class="btn">タイトルへ戻る</button>
-          <div class="pause-options">
-            <label>カメラ感度 <input id="opt-sens" type="range" min="0.3" max="2.5" step="0.1" value="1" /></label>
-            <label>カメラ上下反転 <input id="opt-invert" type="checkbox" /></label>
-            <label>音量 <input id="opt-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
-          </div>
         </div>
       </div>
+
+      <!-- ===== SETTINGS (opened from the title or pause screen) ===== -->
+      <div id="settings-screen" class="screen hidden">
+        <div class="menu-box settings-box" role="dialog" aria-labelledby="settings-title">
+          <h2 id="settings-title">設定</h2>
+          <div class="settings-list">
+            <div class="setting-row">
+              <span class="setting-label">画質</span>
+              <div class="segmented" id="opt-quality" role="radiogroup" aria-label="画質">
+                <button type="button" role="radio" data-q="low">低</button>
+                <button type="button" role="radio" data-q="medium">中</button>
+                <button type="button" role="radio" data-q="high">高</button>
+              </div>
+            </div>
+            <p class="setting-note" id="quality-note">重いときは「低」にすると軽くなります。</p>
+            <label class="setting-row" for="opt-shake">
+              <span class="setting-label">画面の揺れ</span>
+              <input id="opt-shake" type="range" min="0" max="1" step="0.05" />
+              <output id="opt-shake-val" class="setting-value">70%</output>
+            </label>
+            <label class="setting-row" for="opt-sens">
+              <span class="setting-label">カメラ感度</span>
+              <input id="opt-sens" type="range" min="0.3" max="2.5" step="0.1" />
+              <output id="opt-sens-val" class="setting-value">1.0</output>
+            </label>
+            <label class="setting-row" for="opt-invert">
+              <span class="setting-label">カメラ上下反転</span>
+              <input id="opt-invert" type="checkbox" />
+            </label>
+            <label class="setting-row" for="opt-music">
+              <span class="setting-label">BGM 音量</span>
+              <input id="opt-music" type="range" min="0" max="1" step="0.05" />
+              <output id="opt-music-val" class="setting-value">80%</output>
+            </label>
+            <label class="setting-row" for="opt-sfx">
+              <span class="setting-label">効果音 音量</span>
+              <input id="opt-sfx" type="range" min="0" max="1" step="0.05" />
+              <output id="opt-sfx-val" class="setting-value">80%</output>
+            </label>
+            <label class="setting-row" for="opt-fps">
+              <span class="setting-label">FPS 表示</span>
+              <input id="opt-fps" type="checkbox" />
+            </label>
+          </div>
+          <button id="btn-settings-close" class="btn btn-primary">閉じる</button>
+        </div>
+      </div>
+
+      <div id="fps-counter" class="hidden"></div>
+      <div id="toast" aria-live="polite"></div>
 
       <!-- ===== RESULT ===== -->
       <div id="result-screen" class="screen hidden">

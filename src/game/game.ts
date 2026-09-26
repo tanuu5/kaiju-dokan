@@ -22,6 +22,7 @@ import { createSkyMaterial, PALETTE, SUN_DIR } from '../world/environment';
 import { CameraRig, DEFAULT_PITCH } from './cameraRig';
 import { finalScore, rankFor, type ScoreKeeper } from './scoring';
 import { Session, type Feedback } from './session';
+import { DEFAULT_SETTINGS, isQualityLevel, normalizeSettings, QUALITY_PRESETS, type QualityLevel, type Settings } from './settings';
 import type { World } from './world';
 
 type GameState = 'loading' | 'title' | 'intro' | 'playing' | 'paused' | 'dying' | 'result';
@@ -52,13 +53,8 @@ void main() {
 const STORAGE_KEY = 'kaiju-dokan-v1';
 /** How long the "click to use the mouse" hint stays on screen. */
 const LOCK_HINT_SECONDS = 5;
-
-interface Settings {
-  sens: number;
-  invert: boolean;
-  volume: number;
-  music: boolean;
-}
+/** Suggest a lower quality preset if play runs below this frame rate. */
+const SLOW_FPS = 40;
 
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
@@ -89,7 +85,15 @@ export class Game {
   private readonly focus = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
   private readonly ray: RayHit = { t: 0, x: 0, y: 0, z: 0, building: -1 };
-  private settings: Settings = { sens: 1, invert: false, volume: 0.8, music: true };
+  private settings: Settings = { ...DEFAULT_SETTINGS };
+  /** Quality level the current run's effect pools were created with. */
+  private sessionQuality: QualityLevel = 'medium';
+  private settingsOpen = false;
+  private perfTime = 0;
+  private perfFrames = 0;
+  private perfHintShown = false;
+  private toastTimer: number | null = null;
+  private readonly fpsEl: HTMLElement;
   private best = { score: 0, rank: '' };
   private debug = false;
   private debugEl: HTMLElement;
@@ -103,15 +107,20 @@ export class Game {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const params = new URLSearchParams(location.search);
-    const low = params.get('quality') === 'low';
     this.debug = params.has('debug');
     this.debugEl = document.getElementById('debug-overlay')!;
     this.debugEl.classList.toggle('hidden', !this.debug);
+    this.fpsEl = document.getElementById('fps-counter')!;
+    this.loadSettings();
+    // ?quality=low|medium|high overrides the saved preset for this visit
+    const urlQuality = params.get('quality');
+    if (isQualityLevel(urlQuality)) this.settings.quality = urlQuality;
+    const preset = QUALITY_PRESETS[this.settings.quality];
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1 : 1.5));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, preset.pixelRatio));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = preset.shadowMap > 0;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.info.autoReset = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -142,8 +151,9 @@ export class Game {
     const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.55);
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight(PALETTE.sunLight, 3.1);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
+    this.sun.castShadow = preset.shadowMap > 0;
+    const shadowSize = preset.shadowMap || 1024;
+    this.sun.shadow.mapSize.set(shadowSize, shadowSize);
     const sc = this.sun.shadow.camera;
     sc.left = -150;
     sc.right = 150;
@@ -157,10 +167,11 @@ export class Game {
 
     // ---- post ----
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: low ? 0 : 4, stencilBuffer: true });
+    const rt = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), { type: THREE.HalfFloatType, samples: preset.msaa, stencilBuffer: true });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.45, 0.4, 0.95);
+    this.bloom.enabled = preset.bloom;
     this.composer.addPass(this.bloom);
     this.finalPass = new ShaderPass(VIGNETTE_SHADER);
     this.composer.addPass(this.finalPass);
@@ -177,7 +188,7 @@ export class Game {
       hurt: (a) => this.hud.hurt(a),
       cameraDistance: (x, y, z) => this.rig.camera.position.distanceTo(this.tmp.set(x, y, z)),
     };
-    this.loadSettings();
+    this.applySettings();
     this.bindUi();
     window.addEventListener('resize', () => this.onResize());
     document.addEventListener('visibilitychange', () => {
@@ -210,7 +221,9 @@ export class Game {
 
   private newSession(): void {
     if (this.session) this.session.dispose();
-    this.session = new Session(this.stage, this.audio, this.feedback);
+    const p = QUALITY_PRESETS[this.settings.quality];
+    this.sessionQuality = this.settings.quality;
+    this.session = new Session(this.stage, this.audio, this.feedback, { debris: p.debris, smoke: p.smoke, glow: p.glow });
     this.scene.add(this.session.world.group);
     this.minimap = new Minimap(document.getElementById('minimap') as HTMLCanvasElement, this.session.world.city);
     this.hud.setGoal(this.stage.goal);
@@ -230,6 +243,8 @@ export class Game {
     this.audio.stopMusic();
     this.hud.show(false);
     this.hud.reset();
+    this.settingsOpen = false;
+    show('settings-screen', false);
     show('title-screen', true);
     show('pause-screen', false);
     show('result-screen', false);
@@ -241,10 +256,13 @@ export class Game {
 
   private beginRun(): void {
     this.audio.init();
-    this.audio.setVolume(this.settings.volume);
-    this.audio.setMusic(this.settings.music);
+    this.applySettings();
     this.audio.ui();
+    this.perfTime = 0;
+    this.perfFrames = 0;
     this.input.requestLock();
+    this.settingsOpen = false;
+    show('settings-screen', false);
     show('title-screen', false);
     show('result-screen', false);
     show('pause-screen', false);
@@ -356,7 +374,10 @@ export class Game {
         fn();
       });
     on('btn-start', () => {
-      if (this.state === 'title') this.beginRun();
+      if (this.state !== 'title') return;
+      // the title screen's city was built with the previous quality's effect pools
+      if (this.sessionQuality !== this.settings.quality) this.newSession();
+      this.beginRun();
     });
     on('btn-resume', () => this.resume());
     on('btn-retry-pause', () => this.retry());
@@ -369,38 +390,154 @@ export class Game {
       this.newSession();
       this.toTitle();
     });
-    const sens = document.getElementById('opt-sens') as HTMLInputElement;
-    const inv = document.getElementById('opt-invert') as HTMLInputElement;
-    const vol = document.getElementById('opt-volume') as HTMLInputElement;
-    sens.value = String(this.settings.sens);
-    inv.checked = this.settings.invert;
-    vol.value = String(this.settings.volume);
-    sens.addEventListener('input', () => {
-      this.settings.sens = Number(sens.value);
-      this.saveSettings();
-    });
-    inv.addEventListener('change', () => {
-      this.settings.invert = inv.checked;
-      this.saveSettings();
-    });
-    vol.addEventListener('input', () => {
-      this.settings.volume = Number(vol.value);
-      this.audio.setVolume(this.settings.volume);
-      this.saveSettings();
-    });
+    this.bindSettingsUi(on);
     // re-acquire pointer lock when clicking the canvas during play
     this.canvas.addEventListener('click', () => {
       if (this.state === 'playing' || this.state === 'intro') this.input.requestLock();
     });
   }
 
+  // ------------------------------------------------------------------
+  // settings
+  // ------------------------------------------------------------------
+
+  private bindSettingsUi(on: (id: string, fn: () => void) => void): void {
+    on('btn-settings-title', () => this.openSettings());
+    on('btn-settings-pause', () => this.openSettings());
+    on('btn-settings-close', () => this.closeSettings());
+    document.querySelectorAll<HTMLButtonElement>('#opt-quality button').forEach((b) =>
+      b.addEventListener('click', () => {
+        const q = b.dataset.q;
+        if (!isQualityLevel(q) || q === this.settings.quality) return;
+        this.settings.quality = q;
+        this.applyQuality();
+        this.syncSettingsUi();
+        this.saveSettings();
+      }),
+    );
+    const range = (id: string, apply: (v: number) => void) => {
+      const el = document.getElementById(id) as HTMLInputElement;
+      el.addEventListener('input', () => {
+        apply(Number(el.value));
+        this.applySettings();
+        this.syncSettingsUi();
+        this.saveSettings();
+      });
+    };
+    const check = (id: string, apply: (v: boolean) => void) => {
+      const el = document.getElementById(id) as HTMLInputElement;
+      el.addEventListener('change', () => {
+        apply(el.checked);
+        this.applySettings();
+        this.saveSettings();
+      });
+    };
+    range('opt-shake', (v) => (this.settings.shake = v));
+    range('opt-sens', (v) => (this.settings.sens = v));
+    range('opt-music', (v) => (this.settings.musicVolume = v));
+    range('opt-sfx', (v) => (this.settings.sfxVolume = v));
+    check('opt-invert', (v) => (this.settings.invert = v));
+    check('opt-fps', (v) => (this.settings.showFps = v));
+  }
+
+  /** The screen the settings panel was opened from (hidden while the panel is up). */
+  private underSettings(): string | null {
+    return this.state === 'paused' ? 'pause-screen' : this.state === 'title' ? 'title-screen' : null;
+  }
+
+  private openSettings(): void {
+    this.settingsOpen = true;
+    this.syncSettingsUi();
+    const under = this.underSettings();
+    if (under) show(under, false);
+    show('settings-screen', true);
+    (document.getElementById('btn-settings-close') as HTMLButtonElement).focus({ preventScroll: true });
+  }
+
+  private closeSettings(): void {
+    this.settingsOpen = false;
+    show('settings-screen', false);
+    const under = this.underSettings();
+    if (under) show(under, true);
+    this.saveSettings();
+  }
+
+  /** Reflect the current settings in the panel's controls. */
+  private syncSettingsUi(): void {
+    const s = this.settings;
+    const set = (id: string, v: number | boolean) => {
+      const el = document.getElementById(id) as HTMLInputElement;
+      if (typeof v === 'boolean') el.checked = v;
+      else el.value = String(v);
+    };
+    const text = (id: string, t: string) => (document.getElementById(id)!.textContent = t);
+    set('opt-shake', s.shake);
+    set('opt-sens', s.sens);
+    set('opt-music', s.musicVolume);
+    set('opt-sfx', s.sfxVolume);
+    set('opt-invert', s.invert);
+    set('opt-fps', s.showFps);
+    text('opt-shake-val', s.shake === 0 ? 'なし' : `${Math.round(s.shake * 100)}%`);
+    text('opt-sens-val', s.sens.toFixed(1));
+    text('opt-music-val', `${Math.round(s.musicVolume * 100)}%`);
+    text('opt-sfx-val', `${Math.round(s.sfxVolume * 100)}%`);
+    document.querySelectorAll<HTMLButtonElement>('#opt-quality button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.q === s.quality)));
+    const midRun = this.state !== 'title' && s.quality !== this.sessionQuality;
+    text(
+      'quality-note',
+      midRun ? '破片や煙の量は、次のプレイから新しい画質になります。' : s.quality === 'low' ? '影・ぼかし効果なしの軽量設定です。' : '重いときは「低」にすると軽くなります。',
+    );
+  }
+
+  /** Apply everything except the graphics preset (audio, camera comfort, FPS counter). */
+  private applySettings(): void {
+    const s = this.settings;
+    this.audio.setSfxVolume(s.sfxVolume);
+    this.audio.setMusicVolume(s.musicVolume);
+    this.audio.setMusic(s.music);
+    this.rig.shakeScale = s.shake;
+    this.fpsEl.classList.toggle('hidden', !s.showFps);
+  }
+
+  /** Switch the graphics preset at runtime (effect pool sizes follow on the next run). */
+  private applyQuality(): void {
+    const p = QUALITY_PRESETS[this.settings.quality];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, p.pixelRatio));
+    const shadows = p.shadowMap > 0;
+    this.renderer.shadowMap.enabled = shadows;
+    this.sun.castShadow = shadows;
+    if (shadows && this.sun.shadow.mapSize.x !== p.shadowMap) {
+      this.sun.shadow.mapSize.set(p.shadowMap, p.shadowMap);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    const rt1 = this.composer.renderTarget1;
+    const rt2 = this.composer.renderTarget2;
+    if (rt1.samples !== p.msaa) {
+      rt1.samples = p.msaa;
+      rt2.samples = p.msaa;
+      rt1.dispose();
+      rt2.dispose();
+    }
+    this.bloom.enabled = p.bloom;
+    this.onResize();
+  }
+
+  private showToast(text: string, seconds = 3): void {
+    const el = document.getElementById('toast')!;
+    el.textContent = text;
+    el.classList.add('show');
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => el.classList.remove('show'), seconds * 1000);
+  }
+
   private loadSettings(): void {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
-      const d = JSON.parse(raw) as Partial<{ settings: Settings; best: { score: number; rank: string } }>;
-      if (d.settings) this.settings = { ...this.settings, ...d.settings };
-      if (d.best) this.best = d.best;
+      const d = JSON.parse(raw) as Partial<{ settings: unknown; best: { score: number; rank: string } }>;
+      this.settings = normalizeSettings(d.settings);
+      if (d.best && typeof d.best.score === 'number') this.best = d.best;
     } catch {
       /* storage unavailable */
     }
@@ -432,14 +569,16 @@ export class Game {
 
   private loop = (now: number): void => {
     requestAnimationFrame(this.loop);
-    const dtReal = Math.min(0.05, Math.max(0, (now - this.lastTime) / 1000));
+    const rawDt = Math.max(0, (now - this.lastTime) / 1000);
+    const dtReal = Math.min(0.05, rawDt);
     this.lastTime = now;
-    this.fpsAcc += dtReal;
+    this.fpsAcc += Math.min(rawDt, 1);
     this.fpsFrames++;
     if (this.fpsAcc >= 0.5) {
       this.fps = this.fpsFrames / this.fpsAcc;
       this.fpsAcc = 0;
       this.fpsFrames = 0;
+      if (this.settings.showFps) this.fpsEl.textContent = `${Math.round(this.fps)} FPS`;
     }
     try {
       this.frame(dtReal);
@@ -466,10 +605,14 @@ export class Game {
     // global keys
     if (this.input.wasPressed('KeyM')) {
       this.settings.music = !this.settings.music;
-      this.audio.setMusic(this.settings.music);
+      this.applySettings();
       this.saveSettings();
+      this.showToast(this.settings.music ? 'BGM オン' : 'BGM オフ', 1.5);
     }
     if (this.input.wasPressed('KeyH')) this.hud.toggleHint();
+    // the settings panel sits on top of the title / pause screen: Esc or P closes it first
+    const menuKeysTaken = this.settingsOpen && (this.input.wasPressed('Escape') || this.input.wasPressed('KeyP'));
+    if (menuKeysTaken) this.closeSettings();
 
     switch (this.state) {
       case 'title':
@@ -487,7 +630,7 @@ export class Game {
         this.updatePlaying(dt, dtReal);
         break;
       case 'paused':
-        if (this.input.wasPressed('KeyP')) this.resume();
+        if (!menuKeysTaken && !this.settingsOpen && this.input.wasPressed('KeyP')) this.resume();
         break;
       case 'dying':
         this.session.updateWorld(dt, null);
@@ -709,6 +852,16 @@ export class Game {
       dtReal,
     );
     this.minimap.draw(w.buildings.list, { x: k.position.x, z: k.position.z, yaw: k.yaw }, this.rig.yaw, (cb) => w.military.forEachUnit(cb));
+
+    // once per visit: suggest the light preset if the first seconds of play run slowly
+    this.perfTime += dtReal;
+    this.perfFrames++;
+    if (!this.perfHintShown && this.perfTime > 10) {
+      this.perfHintShown = true;
+      if (this.perfFrames / this.perfTime < SLOW_FPS && this.settings.quality !== 'low') {
+        this.showToast('動作が重いときは、ポーズ →「設定」で画質を「低」にすると軽くなります', 6);
+      }
+    }
   }
 
   /** The breath aims where the screen centre points (camera ray, starting past the kaiju). */

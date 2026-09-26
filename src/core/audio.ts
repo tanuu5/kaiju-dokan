@@ -23,7 +23,8 @@ export class AudioSys {
   private lz = 0;
   private rx = 1;
   private rz = 0;
-  private volume = 0.8;
+  private sfxLevel = 0.8;
+  private musicLevel = 0.8;
   musicOn = true;
   private musicTimer: number | null = null;
   private nextNote = 0;
@@ -52,14 +53,14 @@ export class AudioSys {
     comp.attack.value = 0.003;
     comp.release.value = 0.25;
     this.master = ctx.createGain();
-    this.master.gain.value = this.volume;
+    this.master.gain.value = 1;
     comp.connect(this.master);
     this.master.connect(ctx.destination);
     this.sfx = ctx.createGain();
-    this.sfx.gain.value = 0.9;
+    this.sfx.gain.value = this.sfxGain();
     this.sfx.connect(comp);
     this.music = ctx.createGain();
-    this.music.gain.value = this.musicOn ? 0.32 : 0;
+    this.music.gain.value = this.musicGain();
     this.music.connect(comp);
 
     // noise buffers
@@ -88,7 +89,7 @@ export class AudioSys {
     this.reverbSend = ctx.createGain();
     this.reverbSend.gain.value = 0.55;
     this.reverbSend.connect(conv);
-    conv.connect(comp);
+    conv.connect(this.sfx); // reverb follows the sound-effect volume
 
     // shared distortion curve
     this.shaper = ctx.createWaveShaper();
@@ -100,14 +101,30 @@ export class AudioSys {
     this.shaper.curve = curve;
   }
 
-  setVolume(v: number): void {
-    this.volume = v;
-    if (this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+  private sfxGain(): number {
+    return 0.9 * this.sfxLevel;
   }
 
+  private musicGain(): number {
+    return this.musicOn ? 0.32 * this.musicLevel : 0;
+  }
+
+  /** Sound-effect volume, 0..1. */
+  setSfxVolume(v: number): void {
+    this.sfxLevel = v;
+    if (this.ctx) this.sfx.gain.setTargetAtTime(this.sfxGain(), this.ctx.currentTime, 0.05);
+  }
+
+  /** BGM volume, 0..1. */
+  setMusicVolume(v: number): void {
+    this.musicLevel = v;
+    if (this.ctx) this.music.gain.setTargetAtTime(this.musicGain(), this.ctx.currentTime, 0.05);
+  }
+
+  /** BGM on/off (M key). */
   setMusic(on: boolean): void {
     this.musicOn = on;
-    if (this.ctx) this.music.gain.setTargetAtTime(on ? 0.32 : 0, this.ctx.currentTime, 0.2);
+    if (this.ctx) this.music.gain.setTargetAtTime(this.musicGain(), this.ctx.currentTime, 0.2);
   }
 
   /** Camera position and right vector for simple stereo panning / distance falloff. */

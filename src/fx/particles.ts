@@ -287,12 +287,14 @@ interface Plume {
 
 /** High-level effects built on two particle layers. */
 export class Particles {
-  readonly smoke = new ParticleLayer(6000, false);
-  readonly glow = new ParticleLayer(4000, true);
+  readonly smoke: ParticleLayer;
+  readonly glow: ParticleLayer;
   readonly group = new THREE.Group();
   private plumes: Plume[] = [];
 
-  constructor() {
+  constructor(smokeMax = 6000, glowMax = 4000) {
+    this.smoke = new ParticleLayer(smokeMax, false);
+    this.glow = new ParticleLayer(glowMax, true);
     this.group.add(this.smoke.mesh, this.glow.mesh);
   }
 

@@ -12,7 +12,7 @@ import type { SfxOpts } from '../fx/sfxText';
 import type { StageDef } from '../stages/stages';
 import type { BuildingState, RayHit } from '../world/buildings';
 import { ScoreKeeper } from './scoring';
-import { World, type WorldHooks } from './world';
+import { DEFAULT_CAPS, World, type WorldCaps, type WorldHooks } from './world';
 
 /** Presentation hooks. The browser Game implements them; simulations use NO_FEEDBACK. */
 export interface Feedback {
@@ -88,6 +88,7 @@ export class Session {
     readonly stage: StageDef,
     private readonly audio: AudioSys,
     private readonly fb: Feedback = NO_FEEDBACK,
+    caps: WorldCaps = DEFAULT_CAPS,
   ) {
     const hooks: WorldHooks = {
       onChunks: (n) => this.onChunks(n),
@@ -100,7 +101,7 @@ export class Session {
       onCarDestroyed: (x, y, z) => this.onCarDestroyed(x, y, z),
       onSplash: (x, z, s) => this.world.fx.splash(x, -1, z, s, 5),
     };
-    this.world = new World(stage, hooks, audio);
+    this.world = new World(stage, hooks, audio, caps);
     this.timeLeft = stage.timeLimit;
     this.world.kaiju.startIntro(this.world.city.kaijuStart.x, this.world.city.kaijuStart.z);
   }

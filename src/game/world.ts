@@ -20,14 +20,23 @@ export interface WorldHooks extends BuildingHooks {
   onSplash(x: number, z: number, size: number): void;
 }
 
+/** Pool sizes for effects (graphics quality). */
+export interface WorldCaps {
+  debris: number;
+  smoke: number;
+  glow: number;
+}
+
+export const DEFAULT_CAPS: WorldCaps = { debris: 4500, smoke: 6000, glow: 4000 };
+
 /** Everything that belongs to one run of a stage. Rebuilt on retry. */
 export class World {
   readonly group = new THREE.Group();
   readonly city: CityLayout;
   readonly ground: Ground;
   readonly water: THREE.Mesh;
-  readonly fx = new Particles();
-  readonly debris = new Debris();
+  readonly fx: Particles;
+  readonly debris: Debris;
   readonly buildings: Buildings;
   readonly trees: Trees;
   readonly traffic: Traffic;
@@ -37,8 +46,10 @@ export class World {
   readonly flashes = new FlashLights(3);
   private readonly extra: THREE.Object3D[] = [];
 
-  constructor(stage: StageDef, hooks: WorldHooks, audio: AudioSys) {
+  constructor(stage: StageDef, hooks: WorldHooks, audio: AudioSys, caps: WorldCaps = DEFAULT_CAPS) {
     this.group.name = 'world';
+    this.fx = new Particles(caps.smoke, caps.glow);
+    this.debris = new Debris(caps.debris);
     this.city = generateCity({ seed: stage.seed, blocksX: stage.blocksX, blocksZ: stage.blocksZ });
     this.ground = new Ground(this.city);
     this.water = createWater(this.city);
