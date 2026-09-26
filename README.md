@@ -2,6 +2,7 @@
 
 巨大怪獣「ドカゴン」を操作して、夕暮れの湾岸シティをドカンドカン破壊するブラウザゲームです。
 Three.js + TypeScript 製。グラフィックも効果音も BGM もすべてコードで生成していて、外部の画像・音声ファイルは使っていません。
+開発には AI コーディングツールの [Claude Code](https://claude.com/claude-code)（モデル：Claude Opus 5.5、effort：Max）を使いました。
 
 **▶ ブラウザで遊ぶ：[https://tanuu5.github.io/kaiju-dokan/](https://tanuu5.github.io/kaiju-dokan/)**
 （インストール不要。PC ではマウス＋キーボードかゲームパッド、スマホ・タブレットではタッチ操作で遊べます）
