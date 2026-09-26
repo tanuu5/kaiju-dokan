@@ -938,6 +938,8 @@ body.touch .buildings-row {
 #touch-ui {
   position: absolute;
   inset: 0;
+  /* no browser pinch / double-tap zoom anywhere on the controls, gaps included */
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -1014,6 +1016,12 @@ body.touch .buildings-row {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
   width: 210px;
   height: 236px;
+  /* a finger between the buttons drags the camera instead of doing nothing */
+  pointer-events: none;
+}
+
+#touch-buttons .tbtn {
+  pointer-events: auto;
 }
 
 .tbtn {
@@ -1157,18 +1165,20 @@ body.touch #minimap {
   height: 96px;
 }
 
+/* landscape phones: between the score panel and the action buttons */
 body.touch .combo {
-  top: calc(env(safe-area-inset-top, 0px) + 96px);
+  top: calc(env(safe-area-inset-top, 0px) + 106px);
   right: calc(env(safe-area-inset-right, 0px) + 14px);
+  line-height: 1.15;
 }
 
 body.touch .combo .combo-num {
-  font-size: 38px;
+  font-size: 32px;
 }
 
 body.touch .combo .combo-word,
 body.touch .combo .combo-mult {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 body.touch .banner-item {
@@ -1222,7 +1232,7 @@ body.touch #toast {
   }
 
   body.touch .combo {
-    top: calc(env(safe-area-inset-top, 0px) + 150px);
+    top: calc(env(safe-area-inset-top, 0px) + 158px);
   }
 
   body.touch #banner {

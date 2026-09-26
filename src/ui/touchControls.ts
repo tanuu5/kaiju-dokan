@@ -95,10 +95,20 @@ export class TouchControls {
       e.stopPropagation();
       this.pausePressed = true;
     });
-    // iOS Safari: two thumbs on the controls must not pinch-zoom the page
-    document.addEventListener('gesturestart', (e) => {
-      if (this.enabled && !root.classList.contains('hidden')) e.preventDefault();
-    });
+    // iOS Safari: several fingers on the controls must not pinch-zoom the page
+    const active = () => this.enabled && !root.classList.contains('hidden');
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(type, (e) => {
+        if (active()) e.preventDefault();
+      });
+    }
+    document.addEventListener(
+      'touchmove',
+      (e) => {
+        if (active() && e.touches.length > 1) e.preventDefault();
+      },
+      { passive: false },
+    );
   }
 
   /** Touch and pen only: a mouse click switches the game back to mouse controls instead. */
