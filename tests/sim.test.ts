@@ -21,6 +21,7 @@ describe('headless simulation (stage 1)', () => {
   it('the defence force shows up and hurts the kaiju', () => {
     const r = simulate(STAGE1, { seconds: 100, fps: 20, sampleEvery: 50 });
     expect(r.samples.some((s) => s.tanks > 0)).toBe(true);
-    expect(r.final.hp).toBeLessThan(1000);
+    // HP regenerates, so check the lowest value during the run rather than the end state
+    expect(r.minHp).toBeLessThan(1000);
   }, 60_000);
 });

@@ -13,7 +13,7 @@ describe.runIf(env.SIM_FULL)('balance report', () => {
       const lines: string[] = [];
       for (let i = 0; i < runs; i++) {
         const r = simulate(stage, { fps: 30, sampleEvery: 30 });
-        lines.push(`run ${i + 1}: status=${r.status} cleared=${r.cleared} clearTime=${r.clearTime?.toFixed(0) ?? '-'}s maxCombo=${r.maxCombo}`);
+        lines.push(`run ${i + 1}: status=${r.status} cleared=${r.cleared} clearTime=${r.clearTime?.toFixed(0) ?? '-'}s minHp=${r.minHp} maxCombo=${r.maxCombo}`);
         lines.push('   t | destr | coll |   hp |   score | tanks helis | debris particles');
         for (const s of [...r.samples, r.final]) {
           lines.push(

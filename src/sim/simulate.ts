@@ -28,6 +28,8 @@ export interface SimReport {
   final: SimSample;
   stats: RunStats;
   maxCombo: number;
+  /** Lowest HP seen during the run (HP regenerates, so the final value can be full again). */
+  minHp: number;
 }
 
 export interface SimOptions {
@@ -64,9 +66,11 @@ export function simulate(stage: StageDef, opts: SimOptions = {}): SimReport {
     };
   };
   const frames = Math.round(seconds * fps);
+  let minHp = session.world.kaiju.hp.value;
   for (let i = 0; i < frames && status === 'running'; i++) {
     session.updateWorld(dt, bot.input(session));
     status = session.updateRules(dt);
+    minHp = Math.min(minHp, session.world.kaiju.hp.value);
     if (clearTime === null && session.cleared) clearTime = session.elapsed;
     if (session.elapsed >= nextSample) {
       samples.push(sample());
@@ -82,6 +86,7 @@ export function simulate(stage: StageDef, opts: SimOptions = {}): SimReport {
     final,
     stats: { ...session.score.stats },
     maxCombo: session.score.maxCombo,
+    minHp: Math.round(minHp),
   };
   session.dispose();
   return report;
