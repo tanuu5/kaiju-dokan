@@ -331,6 +331,15 @@ body {
   color: var(--text-dim);
 }
 
+#controls-hint .hint-pad,
+#controls-hint.mode-pad .hint-kb {
+  display: none;
+}
+
+#controls-hint.mode-pad .hint-pad {
+  display: block;
+}
+
 #crosshair {
   position: absolute;
   left: 50%;
@@ -713,7 +722,8 @@ body {
 
 .btn:focus-visible,
 .segmented button:focus-visible,
-.setting-row input:focus-visible {
+.setting-row input:focus-visible,
+.pad-focus {
   outline: 3px solid var(--accent-2);
   outline-offset: 2px;
 }

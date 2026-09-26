@@ -9,6 +9,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { KAIJU } from '../config';
 import { AudioSys } from '../core/audio';
+import { GamepadInput, PAD, stickToWorld } from '../core/gamepad';
 import { Input } from '../core/input';
 import { clamp, formatInt } from '../core/math';
 import { rand } from '../core/rng';
@@ -16,6 +17,7 @@ import type { KaijuInput } from '../entities/kaiju';
 import { SfxText } from '../fx/sfxText';
 import { STAGE1, type StageDef } from '../stages/stages';
 import { Hud } from '../ui/hud';
+import { MenuNav } from '../ui/menuNav';
 import { Minimap } from '../ui/minimap';
 import type { RayHit } from '../world/buildings';
 import { createSkyMaterial, PALETTE, SUN_DIR } from '../world/environment';
@@ -61,6 +63,7 @@ export class Game {
   readonly scene = new THREE.Scene();
   readonly rig: CameraRig;
   readonly input: Input;
+  readonly pad = new GamepadInput();
   readonly audio = new AudioSys();
   readonly hud = new Hud();
   readonly stage: StageDef = STAGE1;
@@ -94,6 +97,7 @@ export class Game {
   private perfHintShown = false;
   private toastTimer: number | null = null;
   private readonly fpsEl: HTMLElement;
+  private readonly menuNav = new MenuNav();
   private best = { score: 0, rank: '' };
   private debug = false;
   private debugEl: HTMLElement;
@@ -190,6 +194,15 @@ export class Game {
     };
     this.applySettings();
     this.bindUi();
+    this.pad.onConnect = () => {
+      this.showToast('ゲームパッドを接続しました', 2.5);
+      document.getElementById('controls-hint')?.classList.add('mode-pad');
+    };
+    this.pad.onDisconnect = () => {
+      this.showToast('ゲームパッドが外れました', 2.5);
+      document.getElementById('controls-hint')?.classList.remove('mode-pad');
+      this.menuNav.clear();
+    };
     window.addEventListener('resize', () => this.onResize());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.state === 'playing') this.pause();
@@ -440,6 +453,19 @@ export class Game {
     check('opt-fps', (v) => (this.settings.showFps = v));
   }
 
+  /** The menu the gamepad should navigate right now (null during play). */
+  private activeMenu(): HTMLElement | null {
+    const visible = (id: string) => {
+      const el = document.getElementById(id);
+      return el && !el.classList.contains('hidden') ? el : null;
+    };
+    if (this.settingsOpen) return visible('settings-screen');
+    if (this.state === 'paused') return visible('pause-screen');
+    if (this.state === 'result') return visible('result-screen');
+    if (this.state === 'title') return visible('title-screen');
+    return null;
+  }
+
   /** The screen the settings panel was opened from (hidden while the panel is up). */
   private underSettings(): string | null {
     return this.state === 'paused' ? 'pause-screen' : this.state === 'title' ? 'title-screen' : null;
@@ -602,6 +628,16 @@ export class Game {
       dt = dtReal * 0.08;
     }
 
+    // gamepad: poll, drive the menus, Start = pause / resume, B = back
+    this.pad.poll();
+    this.menuNav.update(dtReal, this.activeMenu(), this.pad);
+    if (this.pad.pressed(PAD.B) || this.pad.pressed(PAD.START)) {
+      if (this.settingsOpen) this.closeSettings();
+      else if (this.state === 'paused') this.resume();
+      else if (this.state === 'playing' && this.pad.pressed(PAD.START)) this.pause();
+      else if (this.state === 'title' && this.pad.pressed(PAD.START)) (document.getElementById('btn-start') as HTMLButtonElement).click();
+    }
+
     // global keys
     if (this.input.wasPressed('KeyM')) {
       this.settings.music = !this.settings.music;
@@ -691,7 +727,7 @@ export class Game {
    * without pointer lock, then fades out after LOCK_HINT_SECONDS.
    */
   private updateLockHint(dt: number): void {
-    const unlocked = this.state === 'playing' && !this.input.locked;
+    const unlocked = this.state === 'playing' && !this.input.locked && !this.pad.connected;
     this.lockHintT = unlocked ? this.lockHintT + dt : 0;
     const want = unlocked && this.lockHintT < LOCK_HINT_SECONDS;
     if (want !== this.lockHintShown) {
@@ -746,7 +782,7 @@ export class Game {
     const p1 = new THREE.Vector3(l1.x, l1.y + Math.sin(this.rig.pitch) * this.rig.distance, l1.z + cp * this.rig.distance);
     this.rig.cinematic = { pos: p0.lerp(p1, e), look: l0.lerp(l1, e) };
     if (t > 0.3 && t < 4.4 && Math.random() < 0.5) w.fx.splash(s.x + rand(-10, 10), -1, s.z + rand(-10, 10), rand(6, 12), 3);
-    if ((this.input.anyPressed && this.stateT > 0.6) || k.action !== 'intro') this.startPlaying();
+    if (((this.input.anyPressed || this.pad.anyPressed) && this.stateT > 0.6) || k.action !== 'intro') this.startPlaying();
   }
 
   // ------------------------------------------------------------------
@@ -768,6 +804,13 @@ export class Game {
     const rz = this.rig.rightZ;
     let wx = fx * mz + rx * mx;
     let wz = fz * mz + rz * mx;
+    // gamepad left stick (analog: a half tilt walks slower)
+    const pad = this.pad;
+    if (pad.connected) {
+      const [px, pz] = stickToWorld(pad.lx, pad.ly, fx, fz, rx, rz);
+      wx += px;
+      wz += pz;
+    }
     const l = Math.hypot(wx, wz);
     if (l > 1) {
       wx /= l;
@@ -776,12 +819,12 @@ export class Game {
     return {
       moveX: wx,
       moveZ: wz,
-      run: inp.isDown('ShiftLeft') || inp.isDown('ShiftRight'),
-      punch: inp.mouseWasPressed(0) || inp.wasPressed('KeyJ'),
-      tail: inp.wasPressed('KeyE') || inp.wasPressed('KeyK'),
-      jump: inp.wasPressed('Space'),
-      roar: inp.wasPressed('KeyQ') || inp.wasPressed('KeyI'),
-      breath: inp.mouse(2) || inp.isDown('KeyF') || inp.isDown('KeyL'),
+      run: inp.isDown('ShiftLeft') || inp.isDown('ShiftRight') || pad.down(PAD.LB) || pad.down(PAD.L3),
+      punch: inp.mouseWasPressed(0) || inp.wasPressed('KeyJ') || pad.pressed(PAD.X),
+      tail: inp.wasPressed('KeyE') || inp.wasPressed('KeyK') || pad.pressed(PAD.B),
+      jump: inp.wasPressed('Space') || pad.pressed(PAD.A),
+      roar: inp.wasPressed('KeyQ') || inp.wasPressed('KeyI') || pad.pressed(PAD.Y),
+      breath: inp.mouse(2) || inp.isDown('KeyF') || inp.isDown('KeyL') || pad.down(PAD.RT),
       aimYaw: Math.atan2(fx, fz),
       aim: this.session.aim,
     };
@@ -801,6 +844,12 @@ export class Game {
     if (inp.isDown('ArrowRight')) dyaw -= ks;
     if (inp.isDown('ArrowUp')) dpitch -= ks * 0.6 * inv;
     if (inp.isDown('ArrowDown')) dpitch += ks * 0.6 * inv;
+    if (this.pad.connected) {
+      // right stick: squared response for fine aiming, full speed at the edge
+      const ps = 2.6 * dtReal * this.settings.sens;
+      dyaw -= Math.sign(this.pad.rx) * this.pad.rx * this.pad.rx * ps;
+      dpitch += Math.sign(this.pad.ry) * this.pad.ry * this.pad.ry * ps * 0.6 * inv;
+    }
     this.rig.rotate(dyaw, dpitch);
     if (inp.wheel !== 0) this.rig.zoom(inp.wheel);
 
