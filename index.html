@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>怪獣ドカン！ KAIJU DOKAN!</title>
+    <meta name="description" content="巨大怪獣を操作して街をドカンドカン破壊するブラウザゲーム（Three.js）" />
+    <meta name="theme-color" content="#1a1420" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a1420'/%3E%3Cpath d='M14 50 L22 22 L28 34 L34 12 L40 34 L46 24 L50 50 Z' fill='%23ff6a1f'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas" tabindex="0"></canvas>
+      <div id="sfx-layer" aria-hidden="true"></div>
+
+      <!-- ===== HUD ===== -->
+      <div id="hud" class="hidden">
+        <div class="hud-top-left panel">
+          <div class="kaiju-name">ドカゴン</div>
+          <div class="bar hp"><div class="bar-fill" id="hp-fill"></div><span class="bar-label">HP</span></div>
+          <div class="bar energy"><div class="bar-fill" id="energy-fill"></div><span class="bar-label">ENERGY</span></div>
+          <div class="cooldowns">
+            <span class="cd" id="cd-tail">しっぽ</span>
+            <span class="cd" id="cd-jump">ジャンプ</span>
+            <span class="cd" id="cd-roar">咆哮</span>
+          </div>
+        </div>
+
+        <div class="hud-top-center">
+          <div id="timer">4:00</div>
+        </div>
+
+        <div class="hud-top-right panel">
+          <div class="destruction-label">破壊率 <span id="destruction-pct">0</span><small>%</small><span class="goal-text">目標 <span id="goal-pct">50</span>%</span></div>
+          <div class="bar destruction"><div class="bar-fill" id="destruction-fill"></div><div class="goal-marker" id="goal-marker"></div></div>
+          <div class="score-row"><span class="score-label">SCORE</span><span id="score">0</span></div>
+          <div class="buildings-row">倒壊 <span id="buildings-count">0</span> 棟</div>
+        </div>
+
+        <div id="combo" class="combo"></div>
+        <div id="minimap-wrap" class="panel"><canvas id="minimap" width="220" height="220"></canvas></div>
+
+        <div id="controls-hint" class="panel">
+          <div><b>WASD</b> 移動 <b>Shift</b> ダッシュ</div>
+          <div><b>マウス / 矢印</b> カメラ</div>
+          <div><b>左クリック / J</b> パンチ</div>
+          <div><b>E / K</b> しっぽ回転</div>
+          <div><b>Space</b> ジャンプ踏みつけ</div>
+          <div><b>右クリック / F / L</b> マグマブレス（長押し）</div>
+          <div><b>Q / I</b> 咆哮</div>
+          <div class="dim"><b>H</b> 操作表示 <b>M</b> BGM <b>P</b> ポーズ</div>
+        </div>
+
+        <div id="crosshair" class="hidden"></div>
+        <div id="banner"></div>
+        <div id="damage-vignette"></div>
+        <div id="debug-overlay" class="hidden"></div>
+      </div>
+
+      <!-- ===== TITLE ===== -->
+      <div id="title-screen" class="screen">
+        <div class="title-wrap">
+          <div class="title-sub">KAIJU DOKAN!</div>
+          <h1 class="title-main">怪獣<span>ドカン！</span></h1>
+          <div class="title-stage">STAGE 1　湾岸シティ</div>
+          <button id="btn-start" class="btn btn-primary" disabled>読み込み中…</button>
+          <div class="title-mission">
+            制限時間内に街の<b>破壊率 <span class="goal-inline">50</span>%</b>を目指せ！<br />
+            防衛軍の戦車や攻撃ヘリにも注意。
+          </div>
+          <div class="title-controls">
+            <div><b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>マウス</b> カメラ</div>
+            <div><b>左クリック</b> パンチ　<b>E</b> しっぽ　<b>Space</b> 踏みつけ</div>
+            <div><b>右クリック長押し</b> マグマブレス　<b>Q</b> 咆哮</div>
+            <div class="dim">キーボードだけでも遊べます：J パンチ / K しっぽ / L ブレス / I 咆哮 / 矢印キー カメラ</div>
+          </div>
+          <div id="title-best" class="title-best"></div>
+        </div>
+      </div>
+
+      <!-- ===== PAUSE ===== -->
+      <div id="pause-screen" class="screen hidden">
+        <div class="menu-box">
+          <h2>PAUSE</h2>
+          <button id="btn-resume" class="btn btn-primary">再開する</button>
+          <button id="btn-retry-pause" class="btn">最初からやり直す</button>
+          <button id="btn-title-pause" class="btn">タイトルへ戻る</button>
+          <div class="pause-options">
+            <label>カメラ感度 <input id="opt-sens" type="range" min="0.3" max="2.5" step="0.1" value="1" /></label>
+            <label>カメラ上下反転 <input id="opt-invert" type="checkbox" /></label>
+            <label>音量 <input id="opt-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== RESULT ===== -->
+      <div id="result-screen" class="screen hidden">
+        <div class="menu-box result-box">
+          <h2 id="result-title">STAGE CLEAR!</h2>
+          <div id="result-rank" class="rank">S</div>
+          <table class="result-table">
+            <tbody id="result-rows"></tbody>
+          </table>
+          <div id="result-best" class="result-best"></div>
+          <button id="btn-retry" class="btn btn-primary">もう一度あそぶ</button>
+          <button id="btn-title" class="btn">タイトルへ</button>
+          <div class="next-stage-note">STAGE 2 は準備中…</div>
+        </div>
+      </div>
+
+      <div id="lock-hint" class="hidden">画面をクリックするとマウスでカメラを操作できます（矢印キーでも操作可）</div>
+      <div id="error-box" class="hidden"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

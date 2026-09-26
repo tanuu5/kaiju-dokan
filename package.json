@@ -1,0 +1,30 @@
+{
+  "name": "kaiju-dokan",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Stomp, punch and breathe fire through a procedurally generated city as a giant kaiju. Three.js + TypeScript.",
+  "author": "たぬ",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sim": "SIM_FULL=1 vitest run tests/balance.test.ts",
+    "check": "tsc --noEmit && vitest run && vite build"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
